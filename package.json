@@ -1,0 +1,14 @@
+{
+  "name": "github-device-code-proxy",
+  "version": "0.1.0",
+  "description": "Node.js/Express API proxy for GitHub device code authentication.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node -e \"require('./index') && console.log('OK')\""
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  }
+}
