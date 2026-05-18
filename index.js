@@ -14,40 +14,62 @@ app.use((req, res, next) => {
   next();
 });
 
+const parseGithubDeviceCodeBody = async (response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+  const payload = await response.text();
+  return Object.fromEntries(new URLSearchParams(payload).entries());
+};
+
 const createGithubDeviceCode = async ({ client_id, scope }) => {
   const response = await fetch('https://github.com/login/device/code', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id, scope })
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ client_id, scope }).toString()
   });
 
-  const data = await response.json();
+  const data = await parseGithubDeviceCodeBody(response);
   return { status: response.status, data };
 };
 
-app.post('/', async (req, res) => {
-  const clientId = req.body.client_id || process.env.GITHUB_CLIENT_ID;
-  const scope = req.body.scope || 'repo user';
+const handleDeviceCodeRequest = async (req, res, getParams) => {
+  try {
+    const { client_id: clientId, scope } = getParams(req);
+    const scopeValue = scope || 'repo user';
 
-  if (!clientId) {
-    return res.status(400).json({ error: 'Missing GitHub client_id' });
+    if (!clientId) {
+      return res.status(400).json({ error: 'Missing GitHub client_id' });
+    }
+
+    const { status, data } = await createGithubDeviceCode({
+      client_id: clientId,
+      scope: scopeValue
+    });
+    res.status(status).json(data);
+  } catch (err) {
+    console.error('GitHub device code proxy error:', err);
+    res.status(502).json({ error: 'Failed to reach GitHub device code endpoint' });
   }
+};
 
-  const { status, data } = await createGithubDeviceCode({ client_id: clientId, scope });
-  res.status(status).json(data);
-});
+app.post('/', (req, res) =>
+  handleDeviceCodeRequest(req, res, (r) => ({
+    client_id: r.body.client_id || process.env.GITHUB_CLIENT_ID,
+    scope: r.body.scope
+  }))
+);
 
-app.get('/', async (req, res) => {
-  const clientId = req.query.client_id || process.env.GITHUB_CLIENT_ID;
-  const scope = req.query.scope || 'repo user';
-
-  if (!clientId) {
-    return res.status(400).json({ error: 'Missing GitHub client_id' });
-  }
-
-  const { status, data } = await createGithubDeviceCode({ client_id: clientId, scope });
-  res.status(status).json(data);
-});
+app.get('/', (req, res) =>
+  handleDeviceCodeRequest(req, res, (r) => ({
+    client_id: r.query.client_id || process.env.GITHUB_CLIENT_ID,
+    scope: r.query.scope
+  }))
+);
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
